@@ -37,9 +37,9 @@ class CustomTwoStageDetector(SAMDetectorMixin, L2SPDetectorMixin, TwoStageDetect
                 )
             )
 
-    def forward_train(self, img, img_metas, gt_bboxes, gt_labels, gt_bboxes_ignore=None, **kwargs):
+    def forward_train(self, img, img_metas, gt_bboxes, gt_labels, gt_bboxes_ignore=None, compute_coarse=False, **kwargs):
         """Forward function for CustomTwoStageDetector."""
-        return super().forward_train(img, img_metas, gt_bboxes, gt_labels, gt_bboxes_ignore=gt_bboxes_ignore)
+        return super().forward_train(img, img_metas, gt_bboxes, gt_labels, gt_bboxes_ignore=gt_bboxes_ignore, compute_coarse=compute_coarse)
 
     @staticmethod
     def load_state_dict_pre_hook(model, model_classes, chkpt_classes, chkpt_dict, prefix, *args, **kwargs):

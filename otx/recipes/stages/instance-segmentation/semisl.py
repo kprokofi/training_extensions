@@ -18,14 +18,22 @@ adaptive_validation_interval = dict(
     enable_eval_before_run=True,
 )
 
+# lr_config = dict(
+#     policy='step',
+#     warmup='linear',
+#     warmup_iters=300,
+#     warmup_ratio=0.001,
+#     # [7] yields higher performance than [6]
+#     step=[8, 11, 14])
+
 custom_hooks = [
     dict(
         type="UnbiasedTeacherHook",
         epoch_momentum=0.0,
-        start_epoch=9,
+        start_epoch=2,
         min_pseudo_label_ratio=0.0,
     )
 ]
-# adaptive_ema = dict(epoch_momentum=0.0)
+adaptive_ema = dict(epoch_momentum=0.4)
 ignore = True
 find_unused_parameters = True
