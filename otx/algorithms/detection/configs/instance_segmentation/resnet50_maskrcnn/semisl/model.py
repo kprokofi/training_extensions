@@ -145,6 +145,16 @@ model = dict(
             pos_weight=-1,
             debug=False,
         ),
+        pseudo_label_initial_score_thr=0.3,
+        rpn_pseudo_threshold=0.6,
+        cls_pseudo_threshold=0.6,
+        min_pseduo_box_size=0,
+        unsup_weight=2.0,
+        use_teacher_proposal=True,
+        use_MSL=True,
+        # ------ PLA config ------- #
+        PLA_iou_thres=0.4,
+        PLA_candidate_topk=12,
     ),
     test_cfg=dict(
         rpn=dict(
