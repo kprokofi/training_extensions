@@ -284,15 +284,31 @@ class Transform2D:
             )
 
 
-def filter_invalid(bbox, label=None, score=None, mask=None, thr=0.0, min_size=0, return_inds=False):
+def filter_invalid(bbox, label=None, score=None, masks=None, ori_res=(None,None), thr=0.0, min_size=0, return_inds=False):
     bbox_ = bbox.clone()
+    new_masks = []
+    if masks is not None and not isinstance(masks, BitmapMasks):
+        masks = np.array(masks)
+        for mask in masks:
+            if len(mask) > 0 and len(mask.shape)==2:
+                new_masks.append(np.expand_dims(mask, axis=0))
+            elif len(mask) > 0:
+                new_masks.append(mask)
+        new_masks = np.concatenate(new_masks)
+        masks = new_masks
+
     if score is not None:
         valid = score > thr
         bbox = bbox[valid]
         if label is not None:
             label = label[valid]
-        if mask is not None:
-            mask = BitmapMasks(mask.masks[valid.cpu().numpy()], mask.height, mask.width)
+        if masks is not None and masks.any():
+            if not isinstance(masks, BitmapMasks):
+                masks = masks[valid.cpu().numpy()]
+            else:
+                assert isinstance(masks, BitmapMasks)
+                masks = masks.masks[valid.cpu().numpy()]
+
     idx_1 = torch.nonzero(valid).reshape(-1)
 
     if min_size is not None:
@@ -302,17 +318,20 @@ def filter_invalid(bbox, label=None, score=None, mask=None, thr=0.0, min_size=0,
         bbox = bbox[valid]
         if label is not None:
             label = label[valid]
-        if mask is not None:
-            mask = BitmapMasks(mask.masks[valid.cpu().numpy()], mask.height, mask.width)
+        if masks is not None:
+            masks = masks[valid.cpu().numpy()]
 
         idx_2 = idx_1[valid]
         idx = torch.zeros(bbox_.shape[0], device=idx_2.device).scatter_(
                     0, idx_2, torch.ones(idx_2.shape[0], device=idx_2.device)).bool()
-
+    if masks is not None:
+        assert len(masks) == len(bbox) == len(label)
+        masks = BitmapMasks(masks, *ori_res)
     if not return_inds:
-        return bbox, label, mask
+        return bbox, label, masks
     else:
-        return bbox, label, mask, idx
+        return bbox, label, masks, idx
+
 
 def filter_invalid_classwise(bbox, label=None, score=None, class_acc=None, thr=0.0, min_size=0):
     if class_acc.max() > 0:

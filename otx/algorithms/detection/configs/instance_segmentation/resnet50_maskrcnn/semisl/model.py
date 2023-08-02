@@ -30,7 +30,10 @@ model = dict(
     unlabeled_cls_loss_weight=1.0,
     unlabeled_reg_loss_weight=1.0,
     use_rpn_loss=True,
-    unlabeled_memory_bank=True,
+    unlabeled_memory_bank=False,
+    use_MSL=True,
+    use_teacher_proposal=True,
+    compute_mask_v2 = True,
     percentile=80,
     type="CustomMaskRCNN",
     neck=dict(
@@ -78,7 +81,9 @@ model = dict(
             ),
             reg_class_agnostic=False,
             loss_cls=dict(type="CrossEntropyLoss", use_sigmoid=False, loss_weight=1.0),
+            # loss_cls=dict(type="FocalLoss", use_sigmoid=True, gamma=1.5, alpha=0.0, loss_weight=1.0),
             loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0),
+            # loss_bbox=dict(type="SL1Loss", loss_weight=1.0),
         ),
         mask_roi_extractor=dict(
             type="SingleRoIExtractor",
@@ -149,7 +154,6 @@ model = dict(
         rpn_pseudo_threshold=0.6,
         cls_pseudo_threshold=0.6,
         min_pseduo_box_size=0,
-        unsup_weight=2.0,
         use_teacher_proposal=True,
         use_MSL=True,
         # ------ PLA config ------- #
@@ -178,3 +182,4 @@ mask_rcnn_r50_fpn_mstrain-poly_3x_coco_20210524_201154-21b550bb.pth"
 
 evaluation = dict(interval=1, metric="mAP", save_best="mAP", iou_thr=[0.5])
 ignore = True
+use_sigmoid = False

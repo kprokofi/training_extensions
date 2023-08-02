@@ -11,7 +11,7 @@ import torch
 from mmdet.models import DETECTORS, build_detector
 from mmdet.models.detectors import BaseDetector
 from mmdet.core.mask.structures import BitmapMasks
-from mmdet.core import bbox2roi, multi_apply, bbox_overlaps
+from mmdet.core import bbox2roi, multi_apply, bbox_overlaps, build_assigner
 from mmcv.runner.fp16_utils import force_fp32
 
 from otx.algorithms.common.utils.logger import get_logger
@@ -44,6 +44,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         unlabeled_memory_bank=False,
         use_MSL=True,
         use_teacher_proposal=True,
+        compute_mask_v2 = True,
         percentile=70,
         **kwargs
     ):
@@ -57,6 +58,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         self.use_rpn_loss=use_rpn_loss
         self.percentile = percentile
         self.use_MSL = use_MSL
+        self.compute_mask_v2 = compute_mask_v2
         self.use_teacher_proposal = use_teacher_proposal
         cfg = kwargs.copy()
         cfg["type"] = arch_type
@@ -70,17 +72,58 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         else:
             self.pseudo_conf_thresh = [pseudo_conf_thresh] * self.num_classes
 
+        # initialize assignment to build condidate bags
+        self.PLA_iou_thres = self.model_s.train_cfg.get("PLA_iou_thres", 0.4)
+        initial_assigner_cfg=dict(
+            type='MaxIoUAssigner',
+            pos_iou_thr=self.PLA_iou_thres,
+            neg_iou_thr=self.PLA_iou_thres,
+            match_low_quality=False,
+            ignore_iof_thr=-1)
+        self.initial_assigner = build_assigner(initial_assigner_cfg)
         # Hooks for super_type transparent weight load/save
         self._register_state_dict_hook(self.state_dict_hook)
         self._register_load_state_dict_pre_hook(functools.partial(self.load_state_dict_pre_hook, self))
 
-    def extract_feat(self, imgs):
-        """Extract features for UnbiasedTeacher."""
-        return self.model_s.extract_feat(imgs)
+    # def extract_feat(self, imgs):
+    #     """Extract features for UnbiasedTeacher."""
+    #     return self.model_s.extract_feat(imgs)
 
-    def simple_test(self, img, img_metas, **kwargs):
-        """Test from img with UnbiasedTeacher."""
+    def extract_feat(self, img, model="model_s", start_lvl=1):
+        """Directly extract features from the backbone+neck."""
+        return self.model_s.extract_feat(img)
+        # model = self.model_s if model == "model_s" else model
+        # assert start_lvl in [0, 1], \
+        #     f"start level {start_lvl} is not supported."
+        # x = model.backbone(img)
+        # # global feature -- [p2, p3, p4, p5, p6, p7]
+        # if model.with_neck:
+        #     x = model.neck(x)
+        # if start_lvl == 0:
+        #     # return x[:-1]
+        #     return x
+        # elif start_lvl == 1:
+        #     return x[1:]
+
+    def simple_test(self, img, img_metas, proposals=None, rescale=False, **kwargs):
+        """Test without augmentation."""
         return self.model_s.simple_test(img, img_metas, **kwargs)
+        # model = self.model_s
+        # assert model.with_bbox, 'Bbox head must be implemented.'
+
+        # x = self.extract_feat(img, model, start_lvl=0)
+
+        # if proposals is None:
+        #     proposal_list = model.rpn_head.simple_test_rpn(x, img_metas)
+        # else:
+        #     proposal_list = proposals
+
+        # return model.roi_head.simple_test(
+        #     x, proposal_list, img_metas, rescale=rescale)
+
+    # def simple_test(self, img, img_metas, **kwargs):
+    #     """Test from img with UnbiasedTeacher."""
+    #     return self.model_s.simple_test(img, img_metas, **kwargs)
 
     def aug_test(self, imgs, img_metas, **kwargs):
         """Aug Test from img with UnbiasedTeacher."""
@@ -147,7 +190,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         losses = {}
         # Supervised loss
         # TODO: check img0 only option (which is common for mean teacher method)
-        sl_losses = self.model_s.forward_train(
+        sl_losses = self.forward_sup_train(
             img,
             img_metas,
             gt_bboxes,
@@ -167,57 +210,57 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         ul_img_metas = ul_args.get("img_metas")
         if ul_img is None:
             return losses
-        with torch.no_grad():
-            teacher_outputs = self.model_t.forward_test(
-                [ul_img0],
-                [ul_img_metas],
-                rescale=False,  # easy augmentation
-            )
+        # with torch.no_grad():
+        #     teacher_outputs = self.model_t.forward_test(
+        #         [ul_img0],
+        #         [ul_img_metas],
+        #         rescale=False,  # easy augmentation
+        #     )
 
-        if self.unlabeled_memory_bank:
-            self.update_memory_bank(teacher_outputs, img, img_metas)
+        # if self.unlabeled_memory_bank:
+        #     self.update_memory_bank(teacher_outputs, img, img_metas)
 
-        if not isinstance(self.pseudo_conf_thresh, list) and not self.unlabeled_memory_bank:
-            self.compute_dynamic_thrsh()
+        # if not isinstance(self.pseudo_conf_thresh, list) and not self.unlabeled_memory_bank:
+        #     self.compute_dynamic_thrsh()
 
-        if not self.unlabeled_memory_bank:
-            current_device = ul_img0[0].device
-            pseudo_bboxes, pseudo_labels, pseudo_masks, pseudo_ratio = self.generate_pseudo_labels(
-                teacher_outputs, device=current_device, img_meta=ul_img_metas, **kwargs
-            )
-            ps_recall = self.eval_pseudo_label_recall(pseudo_bboxes, ul_args.get("gt_bboxes", []))
-            losses.update(ps_recall=torch.tensor(ps_recall, device=current_device))
-            losses.update(ps_ratio=torch.tensor([pseudo_ratio], device=current_device))
+        # if not self.unlabeled_memory_bank:
+        current_device = ul_img0[0].device
+        # pseudo_bboxes, pseudo_labels, pseudo_masks, pseudo_ratio = self.generate_pseudo_labels(
+        #     teacher_outputs, device=current_device, img_meta=ul_img_metas, **kwargs
+        # )
+        # ps_recall = self.eval_pseudo_label_recall(pseudo_bboxes, ul_args.get("gt_bboxes", []))
+        # losses.update(ps_recall=torch.tensor(ps_recall, device=current_device))
+        # losses.update(ps_ratio=torch.tensor([pseudo_ratio], device=current_device))
 
-            # Unsupervised loss
-            # Compute only if min_pseudo_label_ratio is reached
-            if pseudo_ratio >= self.min_pseudo_label_ratio:
-                ul_losses = self.foward_unsup_train(ul_img0, ul_img, ul_img_metas, ul_img_metas)
+        # Unsupervised loss
+        # Compute only if min_pseudo_label_ratio is reached
+        # if pseudo_ratio >= self.min_pseudo_label_ratio:
+        ul_losses = self.foward_unsup_train(ul_img0, ul_img, ul_img_metas, ul_img_metas)
 
-                for ul_loss_name in ul_losses.keys():
-                    if ul_loss_name.startswith("loss_"):
-                        # skip regression rpn loss
-                        if not self.use_rpn_loss and ul_loss_name == "loss_rpn_bbox":
-                            # skip regression rpn loss
-                            continue
-                        ul_loss = ul_losses[ul_loss_name]
-                        if "_bbox" in ul_loss_name:
-                            if isinstance(ul_loss, list):
-                                losses[ul_loss_name + "_ul"] = [loss * self.unlabeled_reg_loss_weight for loss in ul_loss]
-                            else:
-                                losses[ul_loss_name + "_ul"] = ul_loss * self.unlabeled_reg_loss_weight
-                        elif "_cls" in ul_loss_name:
-                            # cls loss
-                            if isinstance(ul_loss, list):
-                                losses[ul_loss_name + "_ul"] = [loss * self.unlabeled_cls_loss_weight for loss in ul_loss]
-                            else:
-                                losses[ul_loss_name + "_ul"] = ul_loss * self.unlabeled_cls_loss_weight
-                        else:
-                            # mask loss
-                            if isinstance(ul_loss, list):
-                                losses[ul_loss_name + "_ul"] = [loss * 1.0 for loss in ul_loss]
-                            else:
-                                losses[ul_loss_name + "_ul"] = ul_loss * 1.0
+        for ul_loss_name in ul_losses.keys():
+            if ul_loss_name.startswith("loss_"):
+                # skip regression rpn loss
+                if not self.use_rpn_loss and ul_loss_name == "loss_rpn_bbox":
+                    # skip regression rpn loss
+                    continue
+                ul_loss = ul_losses[ul_loss_name]
+                if "_bbox" in ul_loss_name:
+                    if isinstance(ul_loss, list):
+                        losses[ul_loss_name + "_ul"] = [loss * self.unlabeled_reg_loss_weight for loss in ul_loss]
+                    else:
+                        losses[ul_loss_name + "_ul"] = ul_loss * self.unlabeled_reg_loss_weight
+                elif "_cls" in ul_loss_name:
+                    # cls loss
+                    if isinstance(ul_loss, list):
+                        losses[ul_loss_name + "_ul"] = [loss * self.unlabeled_cls_loss_weight for loss in ul_loss]
+                    else:
+                        losses[ul_loss_name + "_ul"] = ul_loss * self.unlabeled_cls_loss_weight
+                else:
+                    # mask loss
+                    if isinstance(ul_loss, list):
+                        losses[ul_loss_name + "_ul"] = [loss * 1.0 for loss in ul_loss]
+                    else:
+                        losses[ul_loss_name + "_ul"] = ul_loss * 1.0
         return losses
 
     def forward_sup_train(self,
@@ -234,12 +277,12 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         """
         losses = dict()
         # high resolution
-        x = self.extract_feat(img, self.student, start_lvl=1)
+        x = self.extract_feat(img, self.model_s, start_lvl=0)
         # RPN forward and loss
-        if self.student.with_rpn:
-            proposal_cfg = self.student.train_cfg.get('rpn_proposal',
-                                              self.student.test_cfg.rpn)
-            rpn_losses, proposal_list = self.student.rpn_head.forward_train(
+        if self.model_s.with_rpn:
+            proposal_cfg = self.model_s.train_cfg.get('rpn_proposal',
+                                              self.model_s.test_cfg.rpn)
+            rpn_losses, proposal_list = self.model_s.rpn_head.forward_train(
                 x,
                 img_metas,
                 gt_bboxes,
@@ -251,7 +294,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
             proposal_list = proposals
 
         # RCNN forward and loss
-        roi_losses = self.student.roi_head.forward_train(x, img_metas, proposal_list,
+        roi_losses = self.model_s.roi_head.forward_train(x, img_metas, proposal_list,
                                                 gt_bboxes, gt_labels,
                                                 gt_bboxes_ignore, gt_masks,
                                                 **kwargs)
@@ -273,14 +316,12 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         tea_proposals, tea_feats = tea_proposals_tuple
         tea_proposals_copy = copy.deepcopy(tea_proposals)    # proposals before geometry transform
 
-        pseudo_bboxes = self.convert_bbox_space(img_metas_teacher,
-                         img_metas_student, det_bboxes)
-        tea_proposals = self.convert_bbox_space(img_metas_teacher,
-                         img_metas_student, tea_proposals)
-
+        pseudo_bboxes = det_bboxes
+        pseudo_bboxes = self.convert_bbox_space(img_metas_teacher,img_metas_student, det_bboxes)
+        tea_proposals = self.convert_bbox_space(img_metas_teacher,img_metas_student, tea_proposals)
         loss = {}
         # RPN stage
-        feats = self.extract_feat(student_img, self.student, start_lvl=1)
+        feats = self.extract_feat(student_img, self.model_s, start_lvl=1)
         stu_rpn_outs, rpn_losses = self.unsup_rpn_loss(
                 feats, pseudo_bboxes, pseudo_labels, img_metas_student)
         loss.update(rpn_losses)
@@ -288,7 +329,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         if self.use_MSL:
             # construct View 2 to learn feature-level scale invariance
             img_ds = resize_image(student_img)   # downsampled images
-            feats_ds = self.extract_feat(img_ds, self.student, start_lvl=0)
+            feats_ds = self.extract_feat(img_ds, self.model_s, start_lvl=0)
             _, rpn_losses_ds = self.unsup_rpn_loss(feats_ds,
                                     pseudo_bboxes, pseudo_labels,
                                     img_metas_student)
@@ -301,23 +342,22 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
             proposal_list = tea_proposals
 
         else :
-            proposal_cfg = self.student.train_cfg.get(
-                "rpn_proposal", self.student.test_cfg.rpn
+            proposal_cfg = self.model_s.train_cfg.get(
+                "rpn_proposal", self.model_s.test_cfg.rpn
             )
-            proposal_list = self.student.rpn_head.get_bboxes(
-                *stu_rpn_outs, img_metas_student, cfg=proposal_cfg
+            proposal_list = self.model_s.rpn_head.get_bboxes(
+                *stu_rpn_outs, img_metas=img_metas_student, cfg=proposal_cfg
             )
 
         """ obtain teacher predictions for all proposals """
         with torch.no_grad():
             rois_ = bbox2roi(tea_proposals_copy)
-            tea_bbox_results = self.teacher.roi_head._bbox_forward(
+            tea_bbox_results = self.model_t.roi_head._bbox_forward(
                              tea_feats, rois_)
 
         teacher_infos = {
             "imgs": teacher_img,
-            "cls_score": tea_bbox_results["cls_score"].sigmoid() if self.use_sigmoid \
-                else tea_bbox_results["cls_score"][:, :self.num_classes].softmax(dim=-1),
+            "cls_score": tea_bbox_results["cls_score"][:, :self.num_classes].softmax(dim=-1),
             "bbox_pred": tea_bbox_results["bbox_pred"],
             "feats": tea_feats,
             "img_metas": img_metas_teacher,
@@ -331,8 +371,6 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                             pseudo_bboxes,
                             pseudo_labels,
                             pseudo_masks=pseudo_masks,
-                            GT_bboxes=None,
-                            GT_labels=None,
                             teacher_infos=teacher_infos)
 
         loss.update(rcnn_losses)
@@ -340,7 +378,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         return loss
 
     def unsup_rpn_loss(self, stu_feats, pseudo_bboxes, pseudo_labels, img_metas):
-        stu_rpn_outs = self.student.rpn_head(stu_feats)
+        stu_rpn_outs = self.model_s.rpn_head(stu_feats)
         # rpn loss
         gt_bboxes_rpn = []
         for bbox, label in zip(pseudo_bboxes, pseudo_labels):
@@ -350,13 +388,13 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                 score=bbox[
                     :, 4
                 ],  # TODO: replace with foreground score, here is classification score,
-                thr=self.train_cfg.rpn_pseudo_threshold,
-                min_size=self.train_cfg.min_pseduo_box_size,
+                thr=self.model_s.train_cfg.rpn_pseudo_threshold,
+                min_size=self.model_s.train_cfg.min_pseduo_box_size,
             )
             gt_bboxes_rpn.append(bbox)
 
         stu_rpn_loss_inputs = stu_rpn_outs + ([bbox.float() for bbox in gt_bboxes_rpn], img_metas)
-        rpn_losses = self.student.rpn_head.loss(*stu_rpn_loss_inputs)
+        rpn_losses = self.model_s.rpn_head.loss(*stu_rpn_loss_inputs)
         return stu_rpn_outs, rpn_losses
 
     def unsup_rcnn_cls_loss(self,
@@ -367,8 +405,6 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                         pseudo_bboxes,
                         pseudo_labels,
                         pseudo_masks,
-                        GT_bboxes=None,
-                        GT_labels=None,
                         teacher_infos=None):
 
         gt_bboxes, gt_labels, gt_masks = multi_apply(
@@ -376,8 +412,10 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
             [bbox[:, :4] for bbox in pseudo_bboxes],
             pseudo_labels,
             [bbox[:, 4] for bbox in pseudo_bboxes],
-            mask=pseudo_masks,
-            thr=self.train_cfg.cls_pseudo_threshold)
+            pseudo_masks,
+            [image_meta["img_shape"][:-1] for image_meta in img_metas],
+            thr=self.model_s.train_cfg.cls_pseudo_threshold,
+            )
 
         sampling_results = self.prediction_guided_label_assign(
                     img_metas,
@@ -391,20 +429,17 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         neg_inds_list = [res.neg_inds for res in sampling_results]
         pos_gt_bboxes_list = [res.pos_gt_bboxes for res in sampling_results]
         pos_assigned_gt_inds_list = [res.pos_assigned_gt_inds for res in sampling_results]
-
-        bbox_targets = self.student.roi_head.bbox_head.get_targets(
-            sampling_results, gt_bboxes, gt_labels, self.student.train_cfg.rcnn
+        bbox_targets = self.model_s.roi_head.bbox_head.get_targets(
+            sampling_results, gt_bboxes, gt_labels, img_metas, rcnn_train_cfg=self.model_s.train_cfg.rcnn
         )
         labels = bbox_targets[0]
 
         rois = bbox2roi(selected_bboxes)
-        bbox_results = self.student.roi_head._bbox_forward(feat, rois)
+        bbox_results = self.model_s.roi_head._bbox_forward(feat, rois)
+        mask_results = self.model_s.roi_head._mask_forward(feat, rois)
 
-        mask_results = self.student.roi_head._mask_forward(
-                feat, pos_inds=pos_inds_list, bbox_feats=bbox_results["bbox_feat"])
-
-        mask_targets = self.student.roi_head.mask_head.get_targets(sampling_results, gt_masks,
-                                                  self.train_cfg)
+        mask_targets = self.model_s.roi_head.mask_head.get_targets(sampling_results, gt_masks,
+                                                  rcnn_train_cfg=self.model_s.train_cfg.rcnn)
         pos_labels = torch.cat([res.pos_gt_labels for res in sampling_results])
 
         bbox_weights = self.compute_PCV(
@@ -414,14 +449,14 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                 pos_gt_bboxes_list,
                 pos_assigned_gt_inds_list)
         bbox_weights_ = bbox_weights.pow(2.0)
-        pos_inds = (labels >= 0) & (labels < self.student.roi_head.bbox_head.num_classes)
+        pos_inds = (labels >= 0) & (labels < self.model_s.roi_head.bbox_head.num_classes)
         if pos_inds.any():
             reg_scale_factor = bbox_weights.sum() / bbox_weights_.sum()
         else:
             reg_scale_factor = 0.0
 
         # Focal loss
-        loss = self.student.roi_head.bbox_head.loss(
+        loss = self.model_s.roi_head.bbox_head.loss(
             bbox_results["cls_score"],
             bbox_results["bbox_pred"],
             rois,
@@ -429,20 +464,18 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
             bbox_weights_,
             reduction_override="none",
         )
-        loss_mask = self.student.roi_head.mask_head.loss(mask_results['mask_pred'],
-                                        mask_targets, pos_labels, reduction_override="none")
+        loss_mask = self.model_s.roi_head.mask_head.loss(mask_results['mask_pred'][pos_inds], mask_targets, pos_labels)
 
         loss["loss_cls"] = loss["loss_cls"].sum() / max(bbox_targets[1].sum(), 1.0)
         loss["loss_bbox"] = reg_scale_factor * loss["loss_bbox"].sum() / max(
             bbox_targets[1].size()[0], 1.0)
-        loss["loss_mask"] = loss_mask["loss_mask"].sum() / max(
-            bbox_targets[1].size()[0], 1.0)
+        loss["loss_mask"] = loss_mask["loss_mask"]
 
         if feat_V2 is not None:
-            bbox_results_V2 = self.student.roi_head._bbox_forward(feat_V2, rois)
-            mask_results_V2 = self.student.roi_head._mask_forward(feat_V2, pos_inds=pos_inds_list,
-                                                                  bbox_feats=bbox_results_V2["bbox_feat"])
-            loss_V2 = self.student.roi_head.bbox_head.loss(
+            bbox_results_V2 = self.model_s.roi_head._bbox_forward(feat_V2, rois)
+            if self.compute_mask_v2:
+                mask_results_V2 = self.model_s.roi_head._mask_forward(feat_V2, rois)
+            loss_V2 = self.model_s.roi_head.bbox_head.loss(
                 bbox_results_V2["cls_score"],
                 bbox_results_V2["bbox_pred"],
                 rois,
@@ -451,81 +484,49 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                 reduction_override="none",
             )
 
-            loss_mask_V2 = self.student.roi_head.mask_head.loss(mask_results_V2['mask_pred'],
-                                        mask_targets, pos_labels, reduction_override="none")
+            if self.compute_mask_v2:
+                loss_mask_V2 = self.model_s.roi_head.mask_head.loss(mask_results_V2['mask_pred'][pos_inds],
+                                        mask_targets, pos_labels)
 
             loss["loss_cls_V2"] = loss_V2["loss_cls"].sum() / max(bbox_targets[1].sum(), 1.0)
             loss["loss_bbox_V2"] = reg_scale_factor * loss_V2["loss_bbox"].sum() / max(
                 bbox_targets[1].size()[0], 1.0)
-            loss["loss_mask_V2"] = loss_mask_V2["loss_mask"].sum() / max(bbox_targets[1].sum(), 1.0)
+            if self.compute_mask_v2:
+                loss["loss_mask_V2"] = loss_mask_V2["loss_mask"]
             if "acc" in loss_V2:
                 loss["acc_V2"] = loss_V2["acc"]
-
-        # print scores of positive proposals (analysis only)
-        tea_cls_score = teacher_infos["cls_score"]
-        num_proposal = [proposal.shape[0] for proposal in proposal_list]
-        tea_cls_score_list = tea_cls_score.split(num_proposal, dim=0)   # tensor to list
-        tea_pos_score = []
-        for score, pos in zip(tea_cls_score_list, pos_inds_list):
-            tea_pos_score.append(score[pos])
-        tea_pos_score = torch.cat(tea_pos_score, dim=0)
-
-        with torch.no_grad():
-            if pos_inds.any():
-                max_score = tea_pos_score[torch.arange(tea_pos_score.shape[0]), labels[pos_inds]].float()
-                pos_score_mean = max_score.mean()
-                pos_score_min = max_score.min()
-
-            else:
-                max_score = tea_cls_score.sum().float() * 0
-                pos_score_mean = tea_cls_score.sum().float() * 0
-                pos_score_min = tea_cls_score.sum().float() * 0
-
-        loss["tea_pos_score_mean"] = pos_score_mean
-        loss["tea_pos_score_min"] = pos_score_min
-        loss['cls_score_thr'] = torch.tensor(self.train_cfg.cls_pseudo_threshold,
-                                             dtype=torch.float,
-                                             device=labels.device)
-        loss["pos_number"] = pos_inds.sum().float()
 
         return loss
 
 
     def extract_teacher_info(self, img, img_metas):
-        feat = self.extract_feat(img, self.teacher, start_lvl=1)
+        feat = self.extract_feat(img, self.model_t, start_lvl=1)
 
-        proposal_cfg = self.teacher.train_cfg.get(
-            "rpn_proposal", self.teacher.test_cfg.rpn
+        proposal_cfg = self.model_t.train_cfg.get(
+            "rpn_proposal", self.model_t.test_cfg.rpn
         )
-        rpn_out = list(self.teacher.rpn_head(feat))
-        proposal_list = self.teacher.rpn_head.get_bboxes(
-            *rpn_out, img_metas, cfg=proposal_cfg
-        )
+        rpn_out = list(self.model_t.rpn_head(feat))
+        proposal_list = self.model_t.rpn_head.get_bboxes(*rpn_out, img_metas=img_metas, cfg=proposal_cfg)
 
         # teacher proposals
         proposals = copy.deepcopy(proposal_list)
 
         proposal_list, proposal_label_list = \
-            self.teacher.roi_head.simple_test_bboxes(
+            self.model_t.roi_head.simple_test_bboxes(
             feat, img_metas, proposal_list,
-            self.teacher.test_cfg.rcnn,
+            self.model_t.test_cfg.rcnn,
             rescale=False
         )   # obtain teacher predictions
 
-        segm_proposal = self.simple_test_mask(
+        segm_proposal = self.model_t.roi_head.simple_test_mask(
                 feat, img_metas, proposal_list, proposal_label_list, rescale=False)
-
         proposal_list = [p.to(feat[0].device) for p in proposal_list]
         proposal_list = [
             p if p.shape[0] > 0 else p.new_zeros(0, 5) for p in proposal_list
         ]
         proposal_label_list = [p.to(feat[0].device) for p in proposal_label_list]
         # filter invalid box roughly
-        if isinstance(self.train_cfg.pseudo_label_initial_score_thr, float):
-            thr = self.train_cfg.pseudo_label_initial_score_thr
-        else:
-            # TODO: use dynamic threshold
-            raise NotImplementedError("Dynamic Threshold is not implemented yet.")
+        thr = self.model_s.train_cfg.pseudo_label_initial_score_thr
 
         proposal_list, proposal_label_list, segm_proposal = list(
             zip(
@@ -534,12 +535,13 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                         proposal,
                         proposal_label,
                         proposal[:, -1],
-                        mask=proposal_mask,
+                        masks=proposal_mask,
+                        ori_res=img_meta["img_shape"][:-1],
                         thr=thr,
-                        min_size=self.train_cfg.min_pseduo_box_size,
+                        min_size=self.model_s.train_cfg.min_pseduo_box_size,
                     )
-                    for proposal, proposal_label, proposal_mask in zip(
-                        proposal_list, proposal_label_list, segm_proposal
+                    for proposal, proposal_label, proposal_mask, img_meta in zip(
+                        proposal_list, proposal_label_list, segm_proposal, img_metas
                     )
                 ]
             )
@@ -580,7 +582,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                     bbox_preds, labels, proposal_list, pos_gt_bboxes_list, pos_assigned_gt_inds_list):
 
             pos_inds = ((label >= 0) &
-                        (label < self.student.roi_head.bbox_head.num_classes)).nonzero().reshape(-1)
+                        (label < self.model_s.roi_head.bbox_head.num_classes)).nonzero().reshape(-1)
             bbox_weights = proposals.new_zeros(bbox_pred.shape[0], 4)
             pos_proposals = proposals[pos_inds]
             if len(pos_inds):
@@ -589,7 +591,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                             bbox_pred.size(0), -1, 4)[
                                 pos_inds, label[pos_inds]
                             ]
-                decoded_bboxes = self.student.roi_head.bbox_head.bbox_coder.decode(
+                decoded_bboxes = self.model_s.roi_head.bbox_head.bbox_coder.decode(
                         pos_proposals, pos_bbox_pred)
 
                 gt_inds_set = torch.unique(pos_assigned_gt_inds)
@@ -639,9 +641,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
             bbox_preds_ = bbox_preds.view(
                 bbox_preds.size(0), -1,
             4)[torch.arange(bbox_preds.size(0)), pred_labels]
-
-            decode_bboxes = self.student.roi_head.bbox_head.bbox_coder.decode(
-                        proposals, bbox_preds_)
+            decode_bboxes = self.model_s.roi_head.bbox_head.bbox_coder.decode(proposals, bbox_preds_)
             decoded_bboxes_list.append(decode_bboxes)
 
         decoded_bboxes_list = self.convert_bbox_space(
@@ -682,7 +682,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                                        pos_labels)
 
             assign_result.gt_inds = refined_gt_inds + 1
-            sampling_result = self.student.roi_head.bbox_sampler.sample(
+            sampling_result = self.model_s.roi_head.bbox_sampler.sample(
                                 assign_result,
                                 proposal_list[i],
                                 gt_bboxes[i],
@@ -709,7 +709,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
             cost = (target_IoUs * target_scores).sqrt()
             _, sort_idx = torch.sort(cost, descending=True)
 
-            candidate_topk = min(pos_idx_per_gt.shape[0], self.PLA_candidate_topk)
+            candidate_topk = min(pos_idx_per_gt.shape[0], self.model_s.train_cfg.PLA_candidate_topk)
             topk_ious, _ = torch.topk(target_IoUs, candidate_topk, dim=0)
             # calculate dynamic k for each gt
             dynamic_ks = torch.clamp(topk_ious.sum(0).int(), min=1)
@@ -724,22 +724,6 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
 
         refined_gt_inds[pos_inds] = refined_pos_gt_inds
         return refined_gt_inds
-
-    def simple_test(self, img, img_metas, proposals=None, rescale=False, **kwargs):
-        """Test without augmentation."""
-
-        model = self.model(**kwargs)
-        assert model.with_bbox, 'Bbox head must be implemented.'
-
-        x = self.extract_feat(img, model, start_lvl=1)
-
-        if proposals is None:
-            proposal_list = model.rpn_head.simple_test_rpn(x, img_metas)
-        else:
-            proposal_list = proposals
-
-        return model.roi_head.simple_test(
-            x, proposal_list, img_metas, rescale=rescale)
 
     @force_fp32(apply_to=["bboxes", "trans_mat"])
     def _transform_bbox(self, bboxes, trans_mat, max_shape):

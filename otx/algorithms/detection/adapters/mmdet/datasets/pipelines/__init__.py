@@ -15,6 +15,8 @@ from .torchvision2mmdet import (
     RandomGaussianBlur,
     RandomGrayscale,
 )
+from .geo_utils import ShuffledSequential, RandResize, RandTranslate, RandRotate, RandShear
+
 
 __all__ = [
     "LoadImageFromOTXDataset",
@@ -28,4 +30,9 @@ __all__ = [
     "NDArrayToPILImage",
     "PILImageToNDArray",
     "BranchImage",
+    "ShuffledSequential",
+    "RandResize",
+    "RandTranslate",
+    "RandRotate",
+    "RandShear"
 ]

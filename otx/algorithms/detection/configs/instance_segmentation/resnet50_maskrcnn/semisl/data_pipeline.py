@@ -23,6 +23,7 @@ __dataset_type = "CocoDataset"
 # TODO: A comparison experiment is needed to determine which value is appropriate for to_rgb.
 __img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 
+
 common_pipeline = [
     dict(type='Resize', img_scale=__img_size, keep_ratio=False),
     dict(type="RandomFlip", flip_ratio=0.5),
@@ -55,6 +56,7 @@ common_pipeline = [
     ),
     dict(type="PILImageToNDArray", keys=["img"]),
     dict(type="Normalize", **__img_norm_cfg),
+    # dict(type='CutOut', n_holes=(1,5), cutout_shape=[(0,0), (33,20), (66,40), (132,80), (198,120), (264,160)] ),
     dict(type="Pad", size_divisor=32),
     dict(type="NDArrayToTensor", keys=["img", "img0"]),
     dict(
@@ -88,7 +90,8 @@ train_pipeline = [
     dict(type="RandomFlip", flip_ratio=0.5),
     dict(type="Normalize", **__img_norm_cfg),
     dict(type="DefaultFormatBundle"),
-    dict(type="Collect", keys=["img", "gt_bboxes", "gt_labels", "gt_masks"]),
+    dict(type="Collect",
+         keys=["img", "gt_bboxes", "gt_labels", "gt_masks"]),
 ]
 
 unlabeled_pipeline = [
@@ -137,6 +140,12 @@ data = dict(
             img_prefix="data/coco/train2017",
             pipeline=train_pipeline)
     ),
+    # train=dict(
+    #     type=__dataset_type,
+    #     ann_file="data/coco/annotations/instances_train2017.json",
+    #     img_prefix="data/coco/train2017",
+    #     pipeline=train_pipeline
+    # ),
     val=dict(
         type=__dataset_type,
         test_mode=True,
