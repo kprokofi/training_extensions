@@ -10,6 +10,7 @@ from mmdet.models.builder import HEADS, build_head, build_roi_extractor
 from mmdet.models.losses import accuracy
 from mmdet.models.roi_heads.bbox_heads.convfc_bbox_head import Shared2FCBBoxHead
 from mmdet.models.roi_heads.standard_roi_head import StandardRoIHead
+from mmdet.models.roi_heads.mask_scoring_roi_head import MaskScoringRoIHead
 
 from otx.algorithms.detection.adapters.mmdet.models.heads.cross_dataset_detector_head import (
     CrossDatasetDetectorHead,
@@ -53,6 +54,11 @@ class CustomRoIHead(StandardRoIHead):
         )
         bbox_results.update(loss_bbox=loss_bbox)
         return bbox_results
+
+
+@HEADS.register_module()
+class CustomMaskScoringRoIHead(MaskScoringRoIHead, CustomRoIHead):
+    pass
 
 
 @HEADS.register_module()

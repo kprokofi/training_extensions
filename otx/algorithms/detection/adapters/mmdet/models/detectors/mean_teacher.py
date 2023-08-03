@@ -163,6 +163,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                 [ul_img_metas],
                 rescale=False,  # easy augmentation
             )
+        breakpoint()
 
         current_device = ul_img0[0].device
         pseudo_bboxes, pseudo_labels, pseudo_masks, pseudo_ratio = self.generate_pseudo_labels(
