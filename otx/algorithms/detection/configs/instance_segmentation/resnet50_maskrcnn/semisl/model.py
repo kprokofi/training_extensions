@@ -26,11 +26,12 @@ task = "instance-segmentation"
 
 model = dict(
     super_type="MeanTeacher",
-    pseudo_conf_thresh=0.7 ,
+    pseudo_conf_thresh=0.7,
     unlabeled_cls_loss_weight=1.0,
     unlabeled_reg_loss_weight=1.0,
+    min_pseudo_label_ratio=0.0,
     use_rpn_loss=True,
-    unlabeled_memory_bank=True,
+    unlabeled_memory_bank=False,
     percentile=80,
     type="CustomMaskRCNN",
     neck=dict(
@@ -59,6 +60,7 @@ model = dict(
     ),
     roi_head=dict(
         type="CustomMaskScoringRoIHead",  # Use CustomROIHead for Ignore mode
+        # type="CustomRoIHead",  # Use CustomROIHead for Ignore mode
         bbox_roi_extractor=dict(
             type="SingleRoIExtractor",
             roi_layer=dict(type="RoIAlign", output_size=7, sampling_ratio=0),

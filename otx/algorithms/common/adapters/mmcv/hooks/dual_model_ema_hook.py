@@ -52,7 +52,6 @@ class DualModelEMAHook(Hook):
         dst_model_name="model_t",
         **kwargs,
     ):
-        breakpoint()
         super().__init__(**kwargs)
         self.momentum = 1 - (1 - momentum) ** interval
         self.epoch_momentum = epoch_momentum

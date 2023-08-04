@@ -44,6 +44,19 @@ class CustomMaskRCNN(SAMDetectorMixin, L2SPDetectorMixin, MaskRCNN):
                 )
             )
 
+    def simple_test(self, img, img_metas, proposals=None, rescale=False, return_iou=False):
+        """Test without augmentation."""
+
+        assert self.with_bbox, 'Bbox head must be implemented.'
+        x = self.extract_feat(img)
+        if proposals is None:
+            proposal_list = self.rpn_head.simple_test_rpn(x, img_metas)
+        else:
+            proposal_list = proposals
+
+        return self.roi_head.simple_test(
+            x, proposal_list, img_metas, rescale=rescale, return_iou=return_iou)
+
     @staticmethod
     def load_state_dict_pre_hook(model, model_classes, chkpt_classes, chkpt_dict, prefix, *args, **kwargs):
         """Modify input state_dict according to class name matching before weight loading."""

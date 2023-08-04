@@ -36,6 +36,8 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         min_pseudo_label_ratio=0.0,
         arch_type="CustomMaskRCNN",
         unlabeled_memory_bank=False,
+        pseudo_conf_thresh_iou=0.9,
+        use_miou=True,
         percentile=70,
         **kwargs
     ):
@@ -46,8 +48,10 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         self.unlabeled_memory_bank = unlabeled_memory_bank
         self.bg_loss_weight = bg_loss_weight
         self.min_pseudo_label_ratio = min_pseudo_label_ratio
+        self.pseudo_conf_thresh_iou = pseudo_conf_thresh_iou
         self.use_rpn_loss=use_rpn_loss
         self.percentile = percentile
+        self.use_miou=use_miou
         cfg = kwargs.copy()
         cfg["type"] = arch_type
         self.model_s = build_detector(cfg)
@@ -161,14 +165,22 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
             teacher_outputs = self.model_t.forward_test(
                 [ul_img0],
                 [ul_img_metas],
-                rescale=False,  # easy augmentation
+                rescale=False,
+                return_iou=True  # easy augmentation
             )
-        breakpoint()
 
         current_device = ul_img0[0].device
-        pseudo_bboxes, pseudo_labels, pseudo_masks, pseudo_ratio = self.generate_pseudo_labels(
-            teacher_outputs, device=current_device, img_meta=ul_img_metas, **kwargs
-        )
+        if self.use_miou:
+            pseudo_bboxes, pseudo_bboxes2, pseudo_labels, pseudo_labels2, pseudo_masks, pseudo_ratio = self.generate_pseudo_labels_miou(
+                teacher_outputs, device=current_device, img_meta=ul_img_metas, **kwargs
+            )
+        else:
+            pseudo_bboxes, pseudo_labels, pseudo_masks, pseudo_ratio = self.generate_pseudo_labels(
+                teacher_outputs, device=current_device, img_meta=ul_img_metas, **kwargs
+            )
+            pseudo_bboxes2=None
+            pseudo_labels2=None
+
         ps_recall = self.eval_pseudo_label_recall(pseudo_bboxes, ul_args.get("gt_bboxes", []))
         losses.update(ps_recall=torch.tensor(ps_recall, device=current_device))
         losses.update(ps_ratio=torch.tensor([pseudo_ratio], device=current_device))
@@ -178,7 +190,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         if pseudo_ratio >= self.min_pseudo_label_ratio:
             if self.bg_loss_weight >= 0.0:
                 self.model_s.bbox_head.bg_loss_weight = self.bg_loss_weight
-            ul_losses = self.model_s.forward_train(ul_img, ul_img_metas, pseudo_bboxes, pseudo_labels, gt_masks=pseudo_masks)  # hard augmentation
+            ul_losses = self.model_s.forward_train(ul_img, ul_img_metas, pseudo_bboxes, pseudo_labels, gt_masks=pseudo_masks, gt_bboxes2=pseudo_bboxes2, gt_labels2=pseudo_labels2)  # hard augmentation
             if self.bg_loss_weight >= 0.0:
                 self.model_s.bbox_head.bg_loss_weight = -1.0
 
@@ -190,6 +202,8 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                         continue
                     ul_loss = ul_losses[ul_loss_name]
                     if "_bbox" in ul_loss_name:
+                        if self.unlabeled_reg_loss_weight == 0:
+                            continue
                         if isinstance(ul_loss, list):
                             losses[ul_loss_name + "_ul"] = [loss * self.unlabeled_reg_loss_weight for loss in ul_loss]
                         else:
@@ -247,6 +261,61 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
 
         pseudo_ratio = float(num_all_pseudo) / num_all_bboxes if num_all_bboxes > 0 else 0.0
         return all_pseudo_bboxes, all_pseudo_labels, all_pseudo_masks, pseudo_ratio
+
+    def generate_pseudo_labels_miou(self, teacher_outputs, img_meta, **kwargs):
+        """Generate pseudo label for UnbiasedTeacher."""
+        device = kwargs.pop("device")
+        all_pseudo_bboxes = []
+        all_pseudo_bboxes2 = []
+        all_pseudo_labels = []
+        all_pseudo_labels2 = []
+        all_pseudo_masks = []
+        num_all_bboxes = 0
+        num_all_pseudo = 0
+        ori_image_shape = img_meta[0]["img_shape"][:-1]
+        for teacher_bboxes_labels in teacher_outputs:
+            pseudo_bboxes = []
+            pseudo_bboxes2 = []
+            pseudo_labels = []
+            pseudo_labels2 = []
+            pseudo_masks = []
+            bboxes = teacher_bboxes_labels[0]
+            masks = teacher_bboxes_labels[1][0]
+            masks_score = teacher_bboxes_labels[1][1]
+            for label, teacher_bboxes_masks in enumerate(zip(bboxes, masks, masks_score)):
+                teacher_bboxes = teacher_bboxes_masks[0]
+                teacher_masks = teacher_bboxes_masks[1]
+                teacher_masks_score = teacher_bboxes_masks[2]
+                confidences = teacher_bboxes[:, -1]
+                if np.any(confidences):
+                    teacher_masks_iou = teacher_masks_score / confidences
+                else:
+                    teacher_masks_iou = np.array([])
+                pseudo_indices = confidences > self.pseudo_conf_thresh[label]
+                pseudo_indices_iou = teacher_masks_iou > self.pseudo_conf_thresh_iou
+                pseudo_bboxes.append(teacher_bboxes[pseudo_indices, :4])  # model output: [x y w h conf]
+                pseudo_bboxes2.append(teacher_bboxes[pseudo_indices_iou, :4])  # model output: [x y w h conf]
+                pseudo_labels.append(np.full([sum(pseudo_indices)], label))
+                pseudo_labels2.append(np.full([sum(pseudo_indices_iou)], label))
+                if np.any(pseudo_indices_iou):
+                    teacher_masks = [np.expand_dims(mask, 0) for mask in teacher_masks]
+                    pseudo_masks.append(np.concatenate(teacher_masks)[pseudo_indices_iou])
+                else:
+                    pseudo_masks.append(np.array([]).reshape(0, *ori_image_shape))
+
+                num_all_bboxes += teacher_bboxes.shape[0]
+                if len(pseudo_bboxes):
+                    num_all_pseudo += pseudo_bboxes[-1].shape[0]
+
+            if len(pseudo_bboxes) > 0:
+                all_pseudo_bboxes.append(torch.from_numpy(np.concatenate(pseudo_bboxes)).to(device))
+                all_pseudo_bboxes2.append(torch.from_numpy(np.concatenate(pseudo_bboxes2)).to(device))
+                all_pseudo_labels.append(torch.from_numpy(np.concatenate(pseudo_labels)).to(device))
+                all_pseudo_labels2.append(torch.from_numpy(np.concatenate(pseudo_labels2)).to(device))
+                all_pseudo_masks.append(BitmapMasks(np.concatenate(pseudo_masks), *ori_image_shape))
+
+        pseudo_ratio = float(num_all_pseudo) / num_all_bboxes if num_all_bboxes > 0 else 0.0
+        return all_pseudo_bboxes, all_pseudo_bboxes2, all_pseudo_labels, all_pseudo_labels2, all_pseudo_masks, pseudo_ratio
 
     def eval_pseudo_label_recall(self, all_pseudo_bboxes, all_gt_bboxes):
         """Eval pseudo label recall for test only."""
