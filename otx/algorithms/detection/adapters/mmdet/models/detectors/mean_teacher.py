@@ -29,6 +29,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         self,
         unlabeled_cls_loss_weight=1.0,
         unlabeled_reg_loss_weight=1.0,
+        unlabeled_mask_loss_weight=1.0,
         use_rpn_loss=True,
         pseudo_conf_thresh=0.7,
         enable_unlabeled_loss=False,
@@ -44,6 +45,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         super().__init__()
         self.unlabeled_cls_loss_weight = unlabeled_cls_loss_weight
         self.unlabeled_reg_loss_weight = unlabeled_reg_loss_weight
+        self.unlabeled_mask_loss_weight = unlabeled_mask_loss_weight
         self.unlabeled_loss_enabled = enable_unlabeled_loss
         self.unlabeled_memory_bank = unlabeled_memory_bank
         self.bg_loss_weight = bg_loss_weight
@@ -217,9 +219,9 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
                     else:
                         # mask loss
                         if isinstance(ul_loss, list):
-                            losses[ul_loss_name + "_ul"] = [loss * 1.0 for loss in ul_loss]
+                            losses[ul_loss_name + "_ul"] = [loss * self.unlabeled_mask_loss_weight for loss in ul_loss]
                         else:
-                            losses[ul_loss_name + "_ul"] = ul_loss * 1.0
+                            losses[ul_loss_name + "_ul"] = ul_loss * self.unlabeled_mask_loss_weight
         return losses
 
     def generate_pseudo_labels(self, teacher_outputs, img_meta, **kwargs):

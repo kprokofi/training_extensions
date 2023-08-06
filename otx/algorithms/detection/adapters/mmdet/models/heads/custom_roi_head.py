@@ -4,6 +4,8 @@
 #
 
 import torch
+from torch import nn
+from torch.nn import functional as F
 from mmcv.runner import force_fp32
 from mmdet.core import bbox2roi, bbox2result, multi_apply
 from mmdet.models.builder import HEADS, build_head, build_roi_extractor
@@ -263,6 +265,11 @@ class CustomMaskScoringRoIHead(MaskScoringRoIHead, CustomRoIHead):
 @HEADS.register_module()
 class CustomConvFCBBoxHead(Shared2FCBBoxHead, CrossDatasetDetectorHead):
     """CustomConvFCBBoxHead class for OTX."""
+    def __init__(self, *args, use_custom_focal=False, **kwargs):
+
+        super().__init__(*args, **kwargs)
+        self.use_custom_focal = use_custom_focal
+
 
     def get_targets(self, sampling_results, gt_bboxes, gt_labels, img_metas, rcnn_train_cfg, concat=True):
         """Calculate the ground truth for all samples in a batch according to the sampling_results.
@@ -347,7 +354,12 @@ class CustomConvFCBBoxHead(Shared2FCBBoxHead, CrossDatasetDetectorHead):
         losses = dict()
         if cls_score is not None and cls_score.numel() > 0:
             avg_factor = max(torch.sum(label_weights > 0).float().item(), 1.0)
-            if isinstance(self.loss_cls, CrossSigmoidFocalLoss):
+            if self.use_custom_focal:
+                losses["loss_cls"] = self.comput_focal_loss(
+                    cls_score,
+                    labels
+                )
+            elif isinstance(self.loss_cls, CrossSigmoidFocalLoss):
                 losses["loss_cls"] = self.loss_cls(
                     cls_score,
                     labels,
@@ -390,3 +402,43 @@ class CustomConvFCBBoxHead(Shared2FCBBoxHead, CrossDatasetDetectorHead):
             else:
                 losses["loss_bbox"] = bbox_pred[pos_inds].sum()
         return losses
+
+    def comput_focal_loss(self, pred_class_logits, gt_classes):
+        if gt_classes.numel() == 0:
+            return 0.0 * pred_class_logits.sum()
+        else:
+            FC_loss = FocalLoss(
+                gamma=1.5,
+                num_classes=self.num_classes,
+            )
+            total_loss = FC_loss(input=pred_class_logits, target=gt_classes)
+            total_loss = total_loss / gt_classes.shape[0]
+
+            return total_loss
+
+
+class FocalLoss(nn.Module):
+    def __init__(
+        self,
+        weight=None,
+        gamma=1.0,
+        num_classes=80,
+    ):
+        super(FocalLoss, self).__init__()
+        assert gamma >= 0
+        self.gamma = gamma
+        self.weight = weight
+
+        self.num_classes = num_classes
+
+    def forward(self, input, target, confid=None):
+
+        # focal loss
+        CE = F.cross_entropy(input, target, reduction="none")
+        p = torch.exp(-CE)
+        loss = (1 - p) ** self.gamma * CE
+
+        if confid is not None:
+            loss = loss * confid
+
+        return loss.sum()
