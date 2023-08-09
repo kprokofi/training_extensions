@@ -38,7 +38,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
         arch_type="CustomMaskRCNN",
         unlabeled_memory_bank=False,
         pseudo_conf_thresh_iou=0.9,
-        use_miou=True,
+        use_miou=False,
         percentile=70,
         **kwargs
     ):
