@@ -28,11 +28,11 @@ model = dict(
     super_type="MeanTeacher",
     pseudo_conf_thresh=0.7,
     unlabeled_cls_loss_weight=1.0,
-    unlabeled_reg_loss_weight=0.0,
-    min_pseudo_label_ratio=0.0,
-    use_rpn_loss=False,
+    unlabeled_reg_loss_weight=1.0,
+    unlabeled_mask_loss_weight=1.0,
+    use_rpn_loss = True,
     unlabeled_memory_bank=False,
-    percentile=80,
+    min_pseudo_label_ratio=0.0,
     type="CustomMaskRCNN",
     neck=dict(
         type="FPN",
@@ -59,23 +59,13 @@ model = dict(
         loss_bbox=dict(type="L1Loss", loss_weight=1.0),
     ),
     roi_head=dict(
-        type="CustomMaskScoringRoIHead",  # Use CustomROIHead for Ignore mode
-        # type="CustomRoIHead",  # Use CustomROIHead for Ignore mode
+        type="CustomRoIHead",  # Use CustomROIHead for Ignore mode
         bbox_roi_extractor=dict(
             type="SingleRoIExtractor",
             roi_layer=dict(type="RoIAlign", output_size=7, sampling_ratio=0),
             out_channels=256,
             featmap_strides=[4, 8, 16, 32],
         ),
-        mask_iou_head=dict(
-            type='MaskIoUHead',
-            num_convs=4,
-            num_fcs=2,
-            roi_feat_size=14,
-            in_channels=256,
-            conv_out_channels=256,
-            fc_out_channels=1024,
-            num_classes=80),
         bbox_head=dict(
             type="Shared2FCBBoxHead",
             in_channels=256,
@@ -88,6 +78,7 @@ model = dict(
                 target_stds=[0.1, 0.1, 0.2, 0.2],
             ),
             reg_class_agnostic=False,
+            use_custom_focal=True,
             loss_cls=dict(type="CrossEntropyLoss", use_sigmoid=False, loss_weight=1.0),
             loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0),
         ),
@@ -155,7 +146,6 @@ model = dict(
             mask_size=28,
             pos_weight=-1,
             debug=False,
-            mask_thr_binary=0.5
         ),
     ),
     test_cfg=dict(
