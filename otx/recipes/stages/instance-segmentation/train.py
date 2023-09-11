@@ -16,12 +16,12 @@ optimizer = dict(
 lr_config = dict(
     policy="ReduceLROnPlateau",
     metric="mAP",
-    patience=3,
+    patience=5,
     iteration_patience=0,
     interval=1,
-    min_lr=0.0001,
+    min_lr=0.000001,
     warmup="linear",
-    warmup_iters=300,
+    warmup_iters=200,
     warmup_ratio=1.0 / 3,
 )
 

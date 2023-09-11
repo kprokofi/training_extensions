@@ -1,4 +1,4 @@
-_base_ = ["./train.py", "../_base_/data/coco_inst_seg.py", "../_base_/models/detectors/detector.py"]
+_base_ = ["./train.py", "../_base_/models/detectors/detector.py"]
 
 task = "instance-segmentation"
 
@@ -15,20 +15,11 @@ task_adapt = dict(
 runner = dict(max_epochs=300)
 
 optimizer_config = dict(_delete_=True)
+adaptive_ema = dict(epoch_momentum=0.4)
 
 ignore = True
 adaptive_validation_interval = dict(
     max_interval=5,
     enable_adaptive_interval_hook=False,
-    enable_eval_before_run=False,
+    enable_eval_before_run=True,
 )
-# adaptive_ema = dict(epoch_momentum=0.4)
-
-lr_config = dict(
-    _delete_=True,
-    policy='step',
-    warmup='linear',
-    warmup_iters=200,
-    warmup_ratio=0.001,
-    # [7] yields higher performance than [6]
-    step=[7])

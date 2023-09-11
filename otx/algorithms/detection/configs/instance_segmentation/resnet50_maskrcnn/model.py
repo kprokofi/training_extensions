@@ -155,7 +155,7 @@ model = dict(
         ),
     ),
 )
-load_from = "/home/kprokofi/noisyboundaries/work_dirs/mask_rcnn_r50_fpn_1x_pascal_sup/epoch_8.pth"
+load_from = "/home/kprokofi/training_extensions_2/training_extensions/SEMISL-citiscapes-supervised-latest-develop/outputs/20230825_204657_train/logs/best_mAP_epoch_18.pth"
 
 evaluation = dict(interval=1, metric="mAP", save_best="mAP", iou_thr=[0.5])
 ignore = True

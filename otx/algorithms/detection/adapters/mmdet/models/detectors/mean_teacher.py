@@ -167,8 +167,7 @@ class MeanTeacher(SAMDetectorMixin, BaseDetector):
             teacher_outputs = self.model_t.forward_test(
                 [ul_img0],
                 [ul_img_metas],
-                rescale=False,
-                return_iou=True  # easy augmentation
+                rescale=False
             )
 
         current_device = ul_img0[0].device

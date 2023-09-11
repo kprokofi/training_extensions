@@ -386,11 +386,6 @@ class DetectionConfigurer:
                     **adaptive_ema,
                 ),
             )
-        # else:
-        #     update_or_add_custom_hook(
-        #         cfg,
-        #         ConfigDict(type="EMAHook", priority="ABOVE_NORMAL", resume_from=cfg.get("resume_from"), momentum=0.1),
-        #     )
 
     @staticmethod
     def add_yolox_hooks(cfg):
