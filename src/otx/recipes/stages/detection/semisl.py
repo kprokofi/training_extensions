@@ -11,7 +11,7 @@ custom_hooks = [
     dict(
         type="MeanTeacherHook",
         epoch_momentum=0.1,
-        start_epoch=2,
+        start_epoch=12,
     ),
     dict(
         type="LazyEarlyStoppingHook",
