@@ -8,6 +8,7 @@ import logging
 from collections import OrderedDict
 from pathlib import Path
 from typing import Union
+import time
 
 import mmcv
 import torch
@@ -23,6 +24,7 @@ from mmdet.utils import compat_cfg, get_root_logger
 from mmdet.utils.util_distribution import build_dp, dp_factory
 from torchvision.ops import nms as tv_nms
 from torchvision.ops import roi_align as tv_roi_align
+import torchvision
 
 from otx.algorithms.common.adapters.mmcv.utils import XPUDataParallel
 from otx.algorithms.common.adapters.torch.utils.utils import ModelDebugger
@@ -60,6 +62,7 @@ def train_detector_debug(model, dataset, cfg, distributed=False, validate=False,
     num_iter_per_epoch = len(train_data_loaders[-1])
 
     # put model on gpus
+    # model = torchvision.models.detection.maskrcnn_resnet50_fpn()
     if cfg.device == "xpu":
         is_fp16 = bool(cfg.get("fp16_", False))
         model = XPUDataParallel(model, device_ids=cfg.gpu_ids, enable_autocast=bool(is_fp16))
@@ -80,6 +83,7 @@ def train_detector_debug(model, dataset, cfg, distributed=False, validate=False,
     lr_scheduler.before_run()
 
     # wrap up model with torch.xpu.optimize
+    print(is_fp16)
     if cfg.device == "xpu":
         if is_fp16:
             dtype = torch.bfloat16
@@ -91,33 +95,51 @@ def train_detector_debug(model, dataset, cfg, distributed=False, validate=False,
     print_iter = 10
     cur_iter = 0
     # debugging tool to save tensors with weights and gradients
-    model_debugger = ModelDebugger(model, enabled=True, save_dir="./debug_folder", max_iters=2)
+    # model_debugger = ModelDebugger(model, enabled=False, save_dir="./debug_folder", max_iters=2)
 
     # Simple training loop
     for epoch in tqdm.tqdm(range(cfg.runner.max_epochs)):
         lr_scheduler.register_progress(epoch, cur_iter)
         lr_scheduler.before_train_epoch()
 
+        start_time = None
         for i, data in enumerate(train_data_loaders[-1]):
+            # targets = []
+            # data.pop("img_metas")
+            # images = data["img"].data[-1].to("xpu")
+
+            # for batch_bb, batch_ll, batch_mm in zip(data["gt_bboxes"].data[-1], data["gt_labels"].data[-1], data["gt_masks"].data[-1]):
+            #     targets.append({"boxes": batch_bb.to("xpu"), "labels": batch_ll.to("xpu"), "masks": batch_mm.to_tensor(dtype=torch.float32, device="xpu")})
+
             cur_iter = num_iter_per_epoch * epoch + i
             lr_scheduler.register_progress(epoch, cur_iter)
             lr_scheduler.before_train_iter()
+            if start_time is None and i > 3:
+                start_time = time.time()
             optimizer.zero_grad()
-            with model_debugger(iter=cur_iter):
-                losses = model(return_loss=True, **data)
-                # parse loss (sum up)
-                total_loss, loss_log = parse_losses(losses)
-                total_loss.backward()
+            # with model_debugger(iter=cur_iter):
+            start = time.time()
+            losses = model(return_loss=True, **data)
+            # losses = model(images, targets)
+            print("model_inference+loss_computation  ", time.time() - start)
+            # parse loss (sum up)
+            total_loss, loss_log = parse_losses(losses)
+            start2 = time.time()
+            total_loss.backward()
 
             optimizer.step()
 
+            print("loss.backward() + optim.step()  ", time.time() - start2)
             if (i + 1) % print_iter == 0 or i + 1 == num_iter_per_epoch:  # progress log
                 logger.info(
                     f"[{i+1} / {num_iter_per_epoch}] "
                     + " / ".join([f"{key} : {round(val,3)}" for key, val in loss_log.items()])
                 )
 
-        save_checkpoint(model, optimizer, cfg.work_dir, epoch + 1)
+            if i == 1003:
+                print("FINAL TIME: ", time.time() - start_time)
+                exit()
+        # save_checkpoint(model, optimizer, cfg.work_dir, epoch + 1)
 
 
 def parse_losses(losses):

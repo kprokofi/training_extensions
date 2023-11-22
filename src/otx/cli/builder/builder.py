@@ -67,6 +67,7 @@ def update_backbone_args(backbone_config: dict, registry: Registry, backend: str
             backbone_config[arg_key] = default_value
 
     missing_args = []
+    backbone_config["depth"] = 34
     for arg in required_args:
         if arg not in backbone_config:
             missing_args.append(arg)
@@ -121,6 +122,9 @@ def update_channels(model_config: OTXConfig, out_channels: Any):
     elif hasattr(model_config.model, "head"):
         print(f"\tUpdate model.head.in_channels: {out_channels}")
         model_config.model.head.in_channels = out_channels
+    elif hasattr(model_config.model, "bbox_head"):
+        print(f"\tUpdate model.bbox_head.in_channels: {out_channels}")
+        model_config.model.bbox_head.in_channels = out_channels
     else:
         raise NotImplementedError("This architecture currently does not support public backbone.")
 

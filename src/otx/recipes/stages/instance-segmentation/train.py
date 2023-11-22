@@ -28,24 +28,24 @@ evaluation = dict(interval=1, metric="mAP", save_best="mAP")
 early_stop_metric = "mAP"
 
 custom_hooks = [
-    dict(
-        type="LazyEarlyStoppingHook",
-        start=3,
-        patience=10,
-        iteration_patience=0,
-        metric="mAP",
-        interval=1,
-        priority=75,
-    ),
-    dict(
-        type="AdaptiveTrainSchedulingHook",
-        enable_adaptive_interval_hook=False,
-        enable_eval_before_run=True,
-    ),
+    # dict(
+    #     type="LazyEarlyStoppingHook",
+    #     start=3,
+    #     patience=10,
+    #     iteration_patience=0,
+    #     metric="mAP",
+    #     interval=1,
+    #     priority=75,
+    # ),
+    # dict(
+    #     type="AdaptiveTrainSchedulingHook",
+    #     enable_adaptive_interval_hook=False,
+    #     enable_eval_before_run=True,
+    # ),
     dict(type="LoggerReplaceHook"),
-    dict(
-        type="CustomModelEMAHook",
-        priority="ABOVE_NORMAL",
-        epoch_momentum=0.4,
-    ),
+    # dict(
+    #     type="CustomModelEMAHook",
+    #     priority="ABOVE_NORMAL",
+    #     epoch_momentum=0.4,
+    # ),
 ]

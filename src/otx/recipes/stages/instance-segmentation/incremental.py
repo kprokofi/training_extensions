@@ -14,11 +14,11 @@ task_adapt = dict(
 
 runner = dict(max_epochs=300)
 
-optimizer_config = dict(_delete_=True, grad_clip=dict(max_norm=35, norm_type=2))
+optimizer_config = dict(_delete_=True)
 
 ignore = True
 adaptive_validation_interval = dict(
     max_interval=5,
-    enable_adaptive_interval_hook=True,
-    enable_eval_before_run=True,
+    enable_adaptive_interval_hook=False,
+    enable_eval_before_run=False,
 )
