@@ -48,8 +48,8 @@ class ValidateItemMixin:
         if image.shape[0] not in [1, 3]:
             msg = "Image must have 1 or 3 channels"
             raise ValueError(msg)
-        if image.dtype != torch.float32:
-            msg = "Image must have dtype float32"
+        if not image.dtype.is_floating_point:
+            msg = f"Image must have a floating point dtype. Got {image.dtype}"
             raise ValueError(msg)
         return image
 
@@ -74,8 +74,8 @@ class ValidateItemMixin:
         if not isinstance(scores, torch.Tensor):
             msg = "Scores must be a torch tensor"
             raise TypeError(msg)
-        if scores.dtype != torch.float32:
-            msg = "Scores must have dtype torch.float32"
+        if not scores.dtype.is_floating_point:
+            msg = f"Scores must have a floating point dtype. Got {scores.dtype}"
             raise ValueError(msg)
         if scores.ndim != 1:
             msg = "Scores must have 1 dimension"
@@ -137,7 +137,7 @@ class ValidateItemMixin:
     def _img_info_validator(img_info: ImageInfo) -> ImageInfo:
         """Validate the image info."""
         if not isinstance(img_info, ImageInfo):
-            msg = "Image info must be a otx.data.entity.ImageInfo"
+            msg = "Image info must be a otx.core.data.entity.base.ImageInfo"
             raise TypeError(msg)
         return img_info
 
@@ -210,7 +210,7 @@ class ValidateBatchMixin:
             raise TypeError(msg)
         # assumes homogeneous data so validation is done only for the first element
         if not scores_batch[0].dtype.is_floating_point:
-            msg = "Scores batch must have a floating point dtype (float16, float32, or float64)"
+            msg = f"Scores batch must have a floating point dtype. Got {scores_batch[0].dtype}"
             raise ValueError(msg)
         if scores_batch[0].ndim > 1:
             msg = "Scores batch must have 1 or 2 dimensions"
@@ -299,8 +299,8 @@ class ValidateBatchMixin:
             msg = f"Boxes batch must be a list of torch tensors. Got {type(boxes_batch)}"
             raise TypeError(msg)
         # assumes homogeneous data so validation is done only for the first element
-        if boxes_batch[0].dtype != torch.float32:
-            msg = "Boxes batch must have dtype torch.float32"
+        if not boxes_batch[0].dtype.is_floating_point:
+            msg = f"Boxes batch must have a floating point dtype. Got {boxes_batch[0].dtype}"
             raise ValueError(msg)
         if boxes_batch[0].ndim != 2:
             msg = "Boxes batch must have 2 dimensions"
@@ -316,7 +316,7 @@ class ValidateBatchMixin:
         if all(img_info is None for img_info in imgs_info_batch):
             return []
         if not isinstance(imgs_info_batch, list) or not isinstance(imgs_info_batch[0], ImageInfo):
-            msg = "Image info batch must be a list of otx.data.entity.ImageInfo"
+            msg = "Image info batch must be a list of otx.core.data.entity.base.ImageInfo"
             raise TypeError(msg)
         return imgs_info_batch
 

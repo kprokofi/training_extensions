@@ -87,6 +87,8 @@ class TorchPredItem(ValidateItemMixin):
     scores: torch.Tensor | None = None
     feature_vector: torch.Tensor | None = None
     saliency_map: torch.Tensor | None = None
+    img_info: ImageInfo | None = None
+    bboxes: BoundingBoxes | None = None
 
 
 @dataclass

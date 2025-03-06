@@ -16,7 +16,7 @@ from torchvision import tv_tensors
 from torchvision.transforms.v2 import functional as F  # noqa: N812
 
 from otx.core.data.entity.base import BboxInfo, ImageInfo, OTXDataEntity
-from otx.core.data.entity.detection import DetBatchDataEntity, DetDataEntity
+from otx.data.torch import TorchDataItem, TorchDataBatch
 from otx.core.data.entity.instance_segmentation import InstanceSegBatchDataEntity, InstanceSegDataEntity
 from otx.core.data.entity.keypoint_detection import KeypointDetDataEntity
 from otx.core.data.transform_libs.torchvision import (
@@ -53,12 +53,12 @@ class MockVideo:
 
 
 @pytest.fixture()
-def det_data_entity() -> DetDataEntity:
-    return DetDataEntity(
-        image=tv_tensors.Image(torch.randint(low=0, high=256, size=(3, 112, 224), dtype=torch.uint8)),
+def det_data_entity() -> TorchDataItem:
+    return TorchDataItem(
+        image=tv_tensors.Image(torch.randint(low=0, high=256, size=(3, 112, 224), dtype=torch.float32)),
         img_info=ImageInfo(img_idx=0, img_shape=(112, 224), ori_shape=(112, 224)),
         bboxes=tv_tensors.BoundingBoxes(data=torch.Tensor([0, 0, 50, 50]), format="xywh", canvas_size=(112, 224)),
-        labels=LongTensor([1]),
+        label=LongTensor([1]),
     )
 
 
@@ -67,7 +67,7 @@ class TestMinIoURandomCrop:
     def min_iou_random_crop(self) -> MinIoURandomCrop:
         return MinIoURandomCrop()
 
-    def test_forward(self, min_iou_random_crop: MinIoURandomCrop, det_data_entity: DetDataEntity) -> None:
+    def test_forward(self, min_iou_random_crop: MinIoURandomCrop, det_data_entity: TorchDataItem) -> None:
         """Test forward."""
         results = min_iou_random_crop(deepcopy(det_data_entity))
 
@@ -97,7 +97,7 @@ class TestResize:
     def test_forward_only_image(
         self,
         resize: Resize,
-        fxt_det_data_entity: tuple[tuple, DetDataEntity, DetBatchDataEntity],
+        fxt_det_data_entity: tuple[tuple, TorchDataItem, TorchDataBatch],
         keep_ratio: bool,
         is_array: bool,
         expected_shape: tuple,
@@ -138,7 +138,7 @@ class TestResize:
     def test_forward_only_image_with_list_of_images(
         self,
         resize: Resize,
-        fxt_det_data_entity: tuple[tuple, DetDataEntity, DetBatchDataEntity],
+        fxt_det_data_entity: tuple[tuple, TorchDataBatch, TorchDataBatch],
         keep_ratio: bool,
         is_array: bool,
         expected_shape: tuple,
@@ -263,7 +263,7 @@ class TestPhotoMetricDistortion:
     def photo_metric_distortion(self) -> PhotoMetricDistortion:
         return PhotoMetricDistortion()
 
-    def test_forward(self, photo_metric_distortion: PhotoMetricDistortion, det_data_entity: DetDataEntity) -> None:
+    def test_forward(self, photo_metric_distortion: PhotoMetricDistortion, det_data_entity: TorchDataItem) -> None:
         """Test forward."""
         results = photo_metric_distortion(deepcopy(det_data_entity))
 
@@ -287,7 +287,7 @@ class TestRandomAffine:
         with pytest.raises(AssertionError):
             RandomAffine(scaling_ratio_range=(0, 0.5))
 
-    def test_forward(self, random_affine: RandomAffine, det_data_entity: DetDataEntity) -> None:
+    def test_forward(self, random_affine: RandomAffine, det_data_entity: TorchDataItem) -> None:
         """Test forward."""
         results = random_affine(deepcopy(det_data_entity))
 
@@ -410,7 +410,7 @@ class TestYOLOXHSVRandomAug:
     def yolox_hsv_random_aug(self) -> YOLOXHSVRandomAug:
         return YOLOXHSVRandomAug()
 
-    def test_forward(self, yolox_hsv_random_aug: YOLOXHSVRandomAug, det_data_entity: DetDataEntity) -> None:
+    def test_forward(self, yolox_hsv_random_aug: YOLOXHSVRandomAug, det_data_entity: TorchDataItem) -> None:
         """Test forward."""
         results = yolox_hsv_random_aug(deepcopy(det_data_entity))
 
@@ -540,8 +540,8 @@ class TestRandomCrop:
         )
 
     @pytest.fixture()
-    def det_entity(self) -> DetDataEntity:
-        return DetDataEntity(
+    def det_entity(self) -> TorchDataItem:
+        return TorchDataItem(
             image=np.random.randint(0, 255, size=(10, 10), dtype=np.uint8),
             img_info=ImageInfo(img_idx=0, img_shape=(10, 10), ori_shape=(10, 10)),
             bboxes=tv_tensors.BoundingBoxes(
