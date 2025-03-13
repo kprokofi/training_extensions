@@ -14,13 +14,13 @@ import torch
 
 from otx.algo.utils.mmengine_utils import load_checkpoint
 from otx.core.data.entity.base import ImageInfo, OTXBatchLossEntity
-from otx.core.data.entity.keypoint_detection import KeypointDetBatchDataEntity, KeypointDetBatchPredEntity
 from otx.core.metrics import MetricCallable, MetricInput
 from otx.core.metrics.pck import PCKMeasureCallable
 from otx.core.model.base import DefaultOptimizerCallable, DefaultSchedulerCallable, OTXModel, OVModel
 from otx.core.schedulers import LRSchedulerListCallable
 from otx.core.types.export import TaskLevelExportParameters
 from otx.core.types.label import LabelInfoTypes
+from otx.data.torch import TorchDataBatch, TorchPredBatch
 
 if TYPE_CHECKING:
     from lightning.pytorch.cli import LRSchedulerCallable, OptimizerCallable
@@ -62,8 +62,8 @@ class OTXKeypointDetectionModel(OTXModel):
             load_checkpoint(detector, self.load_from, map_location="cpu")
         return detector
 
-    def _customize_inputs(self, entity: KeypointDetBatchDataEntity) -> dict[str, Any]:
-        """Convert KeypointDetBatchDataEntity into Topdown model's input."""
+    def _customize_inputs(self, entity: TorchDataBatch) -> dict[str, Any]:
+        """Convert TorchDataBatch into Topdown model's input."""
         inputs: dict[str, Any] = {}
 
         inputs["inputs"] = entity.images
@@ -74,8 +74,8 @@ class OTXKeypointDetectionModel(OTXModel):
     def _customize_outputs(
         self,
         outputs: Any,  # noqa: ANN401
-        inputs: KeypointDetBatchDataEntity,
-    ) -> KeypointDetBatchPredEntity | OTXBatchLossEntity:
+        inputs: TorchDataBatch,
+    ) -> TorchPredBatch | OTXBatchLossEntity:
         if self.training:
             if not isinstance(outputs, dict):
                 raise TypeError(outputs)
@@ -93,16 +93,14 @@ class OTXKeypointDetectionModel(OTXModel):
             keypoints.append(torch.as_tensor(output[0], device=self.device))
             scores.append(torch.as_tensor(output[1], device=self.device))
 
-        return KeypointDetBatchPredEntity(
+        return TorchPredBatch(
             batch_size=len(outputs),
             images=inputs.images,
             imgs_info=inputs.imgs_info,
             keypoints=keypoints,
             scores=scores,
-            keypoints_visible=[],
             bboxes=[],
             labels=[],
-            bbox_info=[],
         )
 
     def configure_metric(self) -> None:
@@ -112,8 +110,8 @@ class OTXKeypointDetectionModel(OTXModel):
 
     def _convert_pred_entity_to_compute_metric(  # type: ignore[override]
         self,
-        preds: KeypointDetBatchPredEntity,
-        inputs: KeypointDetBatchDataEntity,
+        preds: TorchPredBatch,
+        inputs: TorchDataBatch,
     ) -> MetricInput:
         return {
             "preds": [
@@ -125,10 +123,10 @@ class OTXKeypointDetectionModel(OTXModel):
             ],
             "target": [
                 {
-                    "keypoints": kpt,
-                    "keypoints_visible": kpt_visible,
+                    "keypoints": kpt[:2],
+                    "keypoints_visible": kpt[2],
                 }
-                for kpt, kpt_visible in zip(inputs.keypoints, inputs.keypoints_visible)
+                for kpt in inputs.keypoints
             ],
         }
 
@@ -151,14 +149,14 @@ class OTXKeypointDetectionModel(OTXModel):
         """Model forward function used for the model tracing during model exportation."""
         return self.model.forward(inputs=image, mode="tensor")
 
-    def get_dummy_input(self, batch_size: int = 1) -> KeypointDetBatchDataEntity:
+    def get_dummy_input(self, batch_size: int = 1) -> TorchDataBatch:
         """Generates a dummy input, suitable for launching forward() on it.
 
         Args:
             batch_size (int, optional): number of elements in a dummy input sequence. Defaults to 1.
 
         Returns:
-            KeypointDetBatchDataEntity: An entity containing randomly generated inference data.
+            TorchDataBatch: An entity containing randomly generated inference data.
         """
         if self.input_size is None:
             msg = f"Input size attribute is not set for {self.__class__}"
@@ -174,15 +172,13 @@ class OTXKeypointDetectionModel(OTXModel):
                     ori_shape=img.shape,
                 ),
             )
-        return KeypointDetBatchDataEntity(
+        return TorchDataBatch(
             batch_size,
             images,
             infos,
             bboxes=[],
             labels=[],
-            bbox_info=[],
             keypoints=[],
-            keypoints_visible=[],
         )
 
     @property
@@ -226,24 +222,22 @@ class OVKeypointDetectionModel(OVModel):
     def _customize_outputs(
         self,
         outputs: list[DetectedKeypoints],
-        inputs: KeypointDetBatchDataEntity,
-    ) -> KeypointDetBatchPredEntity | OTXBatchLossEntity:
+        inputs: TorchDataBatch,
+    ) -> TorchPredBatch | OTXBatchLossEntity:
         keypoints = []
         scores = []
         for output in outputs:
             keypoints.append(torch.as_tensor(output.keypoints, device=self.device))
             scores.append(torch.as_tensor(output.scores, device=self.device))
 
-        return KeypointDetBatchPredEntity(
+        return TorchPredBatch(
             batch_size=len(outputs),
             images=inputs.images,
             imgs_info=inputs.imgs_info,
             keypoints=keypoints,
             scores=scores,
-            keypoints_visible=[],
             bboxes=[],
             labels=[],
-            bbox_info=[],
         )
 
     def configure_metric(self) -> None:
@@ -253,8 +247,8 @@ class OVKeypointDetectionModel(OVModel):
 
     def _convert_pred_entity_to_compute_metric(  # type: ignore[override]
         self,
-        preds: KeypointDetBatchPredEntity,
-        inputs: KeypointDetBatchDataEntity,
+        preds: TorchPredBatch,
+        inputs: TorchDataBatch,
     ) -> MetricInput:
         return {
             "preds": [
@@ -266,9 +260,9 @@ class OVKeypointDetectionModel(OVModel):
             ],
             "target": [
                 {
-                    "keypoints": kpt,
-                    "keypoints_visible": kpt_visible,
+                    "keypoints": kpt[:2],
+                    "keypoints_visible": kpt[2],
                 }
-                for kpt, kpt_visible in zip(inputs.keypoints, inputs.keypoints_visible)
+                for kpt in inputs.keypoints
             ],
         }
