@@ -17,7 +17,7 @@ pytest tests/perf/test_classification.py\
     --verbose
 
 # det
-pytest tests/perf/test_detection.py \
+pytest tests/perf/test_detection.py::TestPerfObjectDetection \
     --model-category all \
     --data-group $DATA_GROUP \
     --eval-upto $EVAL_UPTO \

@@ -22,7 +22,7 @@ def fxt_deterministic(request: pytest.FixtureRequest) -> bool:
     deterministic = request.config.getoption("--deterministic")
     deterministic = "warn" if deterministic is None or deterministic == "warn" else deterministic == "true"
     log.info(f"{deterministic=}")
-    return False
+    return False # very important to not switch it on for XPU devices
 
 
 class TestPerfObjectDetection(PerfTestBase):
