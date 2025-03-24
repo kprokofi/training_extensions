@@ -1,7 +1,7 @@
 DATA_ROOT=./xpu_benchmark_datasets
 OUTPUT_ROOT=./benchmark_otx_2.4.0_xpu
 DATA_GROUP=all
-EVAL_UPTO=optimize
+EVAL_UPTO=train
 NUM_REPEAT=3
 DEVICE=xpu
 
