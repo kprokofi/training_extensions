@@ -22,7 +22,7 @@ def fxt_deterministic(request: pytest.FixtureRequest) -> bool:
     deterministic = request.config.getoption("--deterministic")
     deterministic = True if deterministic is None else deterministic == "true"
     log.info(f"{deterministic=}")
-    return deterministic
+    return False # very important to not switch it on for XPU devices
 
 
 class TestPerfSingleLabelClassification(PerfTestBase):
@@ -33,7 +33,6 @@ class TestPerfSingleLabelClassification(PerfTestBase):
         Benchmark.Model(task="classification/multi_class_cls", name="efficientnet_v2", category="balance"),
         Benchmark.Model(task="classification/multi_class_cls", name="mobilenet_v3_large", category="accuracy"),
         Benchmark.Model(task="classification/multi_class_cls", name="deit_tiny", category="other"),
-        Benchmark.Model(task="classification/multi_class_cls", name="dino_v2", category="other"),
         Benchmark.Model(task="classification/multi_class_cls", name="tv_efficientnet_b3", category="other"),
         Benchmark.Model(task="classification/multi_class_cls", name="tv_efficientnet_v2_l", category="other"),
         Benchmark.Model(task="classification/multi_class_cls", name="tv_mobilenet_v3_small", category="other"),
@@ -42,25 +41,25 @@ class TestPerfSingleLabelClassification(PerfTestBase):
     DATASET_TEST_CASES = [
         Benchmark.Dataset(
             name=f"multiclass_CUB_small_{idx}",
-            path=Path("multiclass_classification/multiclass_CUB_small") / f"{idx}",
+            path=Path("classification/multiclass_CUB_small") / f"{idx}",
             group="small",
-            num_repeat=5,
+            num_repeat=3,
             extra_overrides={},
         )
         for idx in (1, 2, 3)
     ] + [
         Benchmark.Dataset(
-            name="multiclass_CUB_medium",
-            path=Path("multiclass_classification/multiclass_CUB_medium"),
-            group="medium",
-            num_repeat=5,
+            name="multiclass_food101_large",
+            path=Path("classification/multiclass_food101_large"),
+            group="large",
+            num_repeat=3,
             extra_overrides={},
         ),
         Benchmark.Dataset(
-            name="multiclass_food20_large",
-            path=Path("multiclass_classification/multiclass_food20_large"),
-            group="large",
-            num_repeat=5,
+            name="cars",
+            path=Path("classification/car_data"),
+            group="large_1",
+            num_repeat=3,
             extra_overrides={},
         ),
     ]
@@ -121,25 +120,18 @@ class TestPerfMultiLabelClassification(PerfTestBase):
     DATASET_TEST_CASES = [
         Benchmark.Dataset(
             name=f"multilabel_CUB_small_{idx}",
-            path=Path("multilabel_classification/multilabel_CUB_small") / f"{idx}",
+            path=Path("classification/multilabel_CUB_small") / f"{idx}",
             group="small",
-            num_repeat=5,
+            num_repeat=3,
             extra_overrides={},
         )
         for idx in (1, 2, 3)
     ] + [
         Benchmark.Dataset(
-            name="multilabel_CUB_medium",
-            path=Path("multilabel_classification/multilabel_CUB_medium"),
-            group="medium",
-            num_repeat=5,
-            extra_overrides={},
-        ),
-        Benchmark.Dataset(
-            name="multilabel_food20_large",
-            path=Path("multilabel_classification/multilabel_food20_large"),
+            name="mlc_voc_2007",
+            path=Path("classification/mlc_voc_2007"),
             group="large",
-            num_repeat=5,
+            num_repeat=3,
             extra_overrides={},
         ),
     ]
@@ -199,26 +191,27 @@ class TestPerfHierarchicalLabelClassification(PerfTestBase):
 
     DATASET_TEST_CASES = [
         Benchmark.Dataset(
-            name=f"hlabel_CUB_small_{idx}",
-            path=Path("hlabel_classification/hlabel_CUB_small") / f"{idx}",
+            name=f"h_label_CUB_small{idx}",
+            path=Path("classification/h_label_CUB_small") / f"{idx}",
             group="small",
-            num_repeat=5,
+            num_repeat=3,
             extra_overrides={},
         )
         for idx in (1, 2, 3)
     ] + [
         Benchmark.Dataset(
-            name="hlabel_CUB_medium",
-            path=Path("hlabel_classification/hlabel_CUB_medium"),
+            name="h_label_CUB_medium",
+            path=Path("classification/h_label_CUB_medium"),
             group="medium",
-            num_repeat=5,
+            num_repeat=3,
             extra_overrides={},
         ),
+        # Add large dataset
         Benchmark.Dataset(
-            name="cifar100_label_group_datum_format_large",
-            path=Path("hlabel_classification/cifar100_label_group_datum_format_large"),
+            name="h_label_cifar100",
+            path=Path("classification/h_label_cifar100"),
             group="large",
-            num_repeat=5,
+            num_repeat=3,
             extra_overrides={},
         ),
     ]

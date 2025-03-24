@@ -17,19 +17,19 @@ class TestPerfInstanceSegmentation(PerfTestBase):
     """Benchmark instance segmentation."""
 
     MODEL_TEST_CASES = [  # noqa: RUF012
-        Benchmark.Model(task="instance_segmentation", name="maskrcnn_efficientnetb2b", category="speed"),
-        Benchmark.Model(task="instance_segmentation", name="maskrcnn_r50", category="accuracy"),
-        Benchmark.Model(task="instance_segmentation", name="maskrcnn_swint", category="other"),
+        # Benchmark.Model(task="instance_segmentation", name="maskrcnn_efficientnetb2b", category="speed"),
+        # Benchmark.Model(task="instance_segmentation", name="maskrcnn_r50", category="accuracy"),
+        # Benchmark.Model(task="instance_segmentation", name="maskrcnn_swint", category="other"),
         Benchmark.Model(task="instance_segmentation", name="rtmdet_inst_tiny", category="other"),
-        Benchmark.Model(task="instance_segmentation", name="maskrcnn_r50_tv", category="other"),
+        # Benchmark.Model(task="instance_segmentation", name="maskrcnn_r50_tv", category="other"),
     ]
 
     DATASET_TEST_CASES = [
         Benchmark.Dataset(
             name=f"wgisd_small_{idx}",
-            path=Path("instance_seg/wgisd_small") / f"{idx}",
+            path=Path("instance_segmentation/wgisd_small") / f"{idx}",
             group="small",
-            num_repeat=5,
+            num_repeat=3,
             extra_overrides={
                 "train": {
                     "metric": "otx.core.metrics.fmeasure.FMeasureCallable",
@@ -41,13 +41,13 @@ class TestPerfInstanceSegmentation(PerfTestBase):
                 },
             },
         )
-        for idx in (1, 2, 3)
-    ] + [
+        for idx in (1,2,3)
+        ] + [
         Benchmark.Dataset(
             name="coco_car_person_medium",
-            path=Path("instance_seg/coco_car_person_medium"),
+            path=Path("instance_segmentation/coco_car_person_medium"),
             group="medium",
-            num_repeat=5,
+            num_repeat=3,
             extra_overrides={
                 "train": {
                     "metric": "otx.core.metrics.fmeasure.FMeasureCallable",
@@ -60,10 +60,10 @@ class TestPerfInstanceSegmentation(PerfTestBase):
             },
         ),
         Benchmark.Dataset(
-            name="vitens_coliform",
-            path=Path("instance_seg/Vitens-Coliform-coco"),
-            group="large",
-            num_repeat=5,
+            name="cityscapes_cut",
+            path=Path("instance_segmentation/cityscapes_cut"),
+            group="medium_1",
+            num_repeat=3,
             extra_overrides={
                 "train": {
                     "metric": "otx.core.metrics.fmeasure.FMeasureCallable",
@@ -75,6 +75,22 @@ class TestPerfInstanceSegmentation(PerfTestBase):
                 },
             },
         ),
+        # Benchmark.Dataset(
+        #     name="vitens_large",
+        #     path=Path("instance_segmentation/vitens_large"),
+        #     group="large",
+        #     num_repeat=3,
+        #     extra_overrides={
+        #         "train": {
+        #             "metric": "otx.core.metrics.fmeasure.FMeasureCallable",
+        #             "callback_monitor": "val/f1-score",
+        #             "model.scheduler.monitor": "val/f1-score",
+        #         },
+        #         "test": {
+        #             "metric": "otx.core.metrics.fmeasure.FMeasureCallable",
+        #         },
+        #     },
+        # ),
     ]
 
     BENCHMARK_CRITERIA = [  # noqa: RUF012

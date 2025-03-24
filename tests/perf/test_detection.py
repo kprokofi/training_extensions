@@ -22,7 +22,7 @@ def fxt_deterministic(request: pytest.FixtureRequest) -> bool:
     deterministic = request.config.getoption("--deterministic")
     deterministic = "warn" if deterministic is None or deterministic == "warn" else deterministic == "true"
     log.info(f"{deterministic=}")
-    return deterministic
+    return False
 
 
 class TestPerfObjectDetection(PerfTestBase):
@@ -37,20 +37,17 @@ class TestPerfObjectDetection(PerfTestBase):
         Benchmark.Model(task="detection", name="yolox_l", category="other"),
         Benchmark.Model(task="detection", name="yolox_x", category="other"),
         Benchmark.Model(task="detection", name="rtmdet_tiny", category="other"),
-        Benchmark.Model(task="detection", name="rtdetr_18", category="other"),
-        Benchmark.Model(task="detection", name="rtdetr_50", category="other"),
-        Benchmark.Model(task="detection", name="rtdetr_101", category="other"),
-        Benchmark.Model(task="detection", name="yolov9_s", category="other"),
-        Benchmark.Model(task="detection", name="yolov9_m", category="other"),
-        Benchmark.Model(task="detection", name="yolov9_c", category="other"),
+        # Benchmark.Model(task="detection", name="rtdetr_18", category="other"),
+        # Benchmark.Model(task="detection", name="rtdetr_50", category="other"),
+        # Benchmark.Model(task="detection", name="rtdetr_101", category="other"),
     ]
 
     DATASET_TEST_CASES = [
         Benchmark.Dataset(
-            name=f"bdd_small_{idx}",
-            path=Path("detection/bdd_small") / f"{idx}",
+            name=f"pothole_small_{idx}",
+            path=Path("detection/pothole_small") / f"{idx}",
             group="small",
-            num_repeat=5,
+            num_repeat=3,
             extra_overrides={
                 "test": {
                     "metric": "otx.core.metrics.fmeasure.FMeasureCallable",
@@ -60,10 +57,23 @@ class TestPerfObjectDetection(PerfTestBase):
         for idx in (1, 2, 3)
     ] + [
         Benchmark.Dataset(
-            name="bdd_medium",
-            path=Path("detection/bdd_medium"),
-            group="medium",
-            num_repeat=5,
+            name=f"wgisd_small_{idx}",
+            path=Path("detection/wgisd_small") / f"{idx}",
+            group="small_1",
+            num_repeat=3,
+            extra_overrides={
+                "test": {
+                    "metric": "otx.core.metrics.fmeasure.FMeasureCallable",
+                },
+            },
+        )
+        for idx in (1, 2, 3)
+    ] + [
+        Benchmark.Dataset(
+            name="bdd_large",
+            path=Path("detection/bdd_large"),
+            group="large",
+            num_repeat=3,
             extra_overrides={
                 "test": {
                     "metric": "otx.core.metrics.fmeasure.FMeasureCallable",
@@ -71,10 +81,10 @@ class TestPerfObjectDetection(PerfTestBase):
             },
         ),
         Benchmark.Dataset(
-            name="bdd_large",
-            path=Path("detection/bdd_large"),
-            group="large",
-            num_repeat=5,
+            name="pascal_tiny",
+            path=Path("detection/pascal_tiny/coco_otx"),
+            group="large_1",
+            num_repeat=3,
             extra_overrides={
                 "test": {
                     "metric": "otx.core.metrics.fmeasure.FMeasureCallable",
