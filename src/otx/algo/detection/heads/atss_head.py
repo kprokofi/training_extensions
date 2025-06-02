@@ -23,7 +23,7 @@ from otx.algo.detection.heads.class_incremental_mixin import (
 )
 from otx.algo.detection.utils.prior_generators.utils import anchor_inside_flags
 from otx.algo.detection.utils.utils import unmap
-from otx.algo.modules.conv_module import Conv2dModule, Conv2dModuleFix
+from otx.algo.modules.conv_module import Conv2dModule, FixedConv2d
 from otx.algo.modules.norm import build_norm_layer
 from otx.algo.modules.scale import Scale
 from otx.algo.utils.utils import InstanceData
@@ -121,7 +121,7 @@ class ATSSHeadModule(ClassIncrementalMixin, AnchorHead):
                 ),
             )
         pred_pad_size = self.pred_kernel_size // 2
-        self.atss_cls = Conv2dModuleFix(
+        self.atss_cls =FixedConv2d(
             self.feat_channels,
             self.num_anchors * self.cls_out_channels,
             self.pred_kernel_size,
@@ -133,7 +133,7 @@ class ATSSHeadModule(ClassIncrementalMixin, AnchorHead):
             self.pred_kernel_size,
             padding=pred_pad_size,
         )
-        self.atss_centerness = Conv2dModuleFix(
+        self.atss_centerness = FixedConv2d(
             self.feat_channels,
             self.num_base_priors * 1,
             self.pred_kernel_size,
