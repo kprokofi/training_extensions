@@ -127,7 +127,7 @@ class ATSSHeadModule(ClassIncrementalMixin, AnchorHead):
             self.pred_kernel_size,
             padding=pred_pad_size,
         )
-        self.atss_reg = FixedConv2d(
+        self.atss_reg = nn.Conv2d(
             self.feat_channels,
             self.num_base_priors * 4,
             self.pred_kernel_size,

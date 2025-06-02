@@ -380,7 +380,7 @@ class FixedConv2d(nn.Conv2d):
 class Conv2dModule(ConvModule):
     """A conv2d block that bundles conv/norm/activation layers."""
 
-    _conv_nd = FixedConv2d
+    _conv_nd = nn.Conv2d
 
 class Conv2dModuleFix(ConvModule):
     """A conv2d block that bundles conv/norm/activation layers with fixed gradient."""
