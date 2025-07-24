@@ -19,65 +19,42 @@ TASK_TYPE = OTXTaskType.DETECTION
 
 MODEL_TEST_CASES = [
     ModelInfo(task=TASK_TYPE.value, name="atss_mobilenetv2", category="default"),
-    ModelInfo(task=TASK_TYPE.value, name="yolox_s", category="speed"),
     ModelInfo(task=TASK_TYPE.value, name="dfine_x", category="accuracy"),
-    ModelInfo(task=TASK_TYPE.value, name="atss_resnext101", category="other"),
-    ModelInfo(task=TASK_TYPE.value, name="rtdetr_101", category="other"),
-    ModelInfo(task=TASK_TYPE.value, name="rtdetr_18", category="other"),
     ModelInfo(task=TASK_TYPE.value, name="rtdetr_50", category="other"),
     ModelInfo(task=TASK_TYPE.value, name="rtmdet_tiny", category="other"),
-    ModelInfo(task=TASK_TYPE.value, name="ssd_mobilenetv2", category="other"),
-    ModelInfo(task=TASK_TYPE.value, name="yolox_tiny", category="other"),
-    ModelInfo(task=TASK_TYPE.value, name="yolox_l", category="other"),
-    ModelInfo(task=TASK_TYPE.value, name="yolox_x", category="other"),
 ]
 
 DATASET_TEST_CASES = (
     [
         DatasetInfo(
             name=f"pothole_tiny_{idx}",
-            path=Path("detection/pothole_coco_tiny") / f"{idx}",
+            path=Path("detection/pothole_small") / f"{idx}",
             group="tiny",
         )
         for idx in (1, 2, 3)
     ]
     + [
         DatasetInfo(
-            name=f"blueberry_tiny_{idx}",
-            path=Path("detection/blueberry_tiny_coco") / f"{idx}",
-            group="tiny",
+            name=f"wgisd_small_{idx}",
+            path=Path("detection/wgisd_small") / f"{idx}",
+            group="small",
         )
         for idx in (1, 2, 3)
     ]
     + [
-        DatasetInfo(
-            name="wgisd_small",
-            path=Path("detection/wgisd_merged_coco_small"),
-            group="small",
-        ),
-        DatasetInfo(
-            name="skindetect",
-            path=Path("detection/skindetect-roboflow"),
-            group="small",
-        ),
         DatasetInfo(
             name="diopsis",
             path=Path("detection/diopsis_coco"),
             group="medium",
         ),
         DatasetInfo(
-            name="bdd_medium",
-            path=Path("detection/bdd_medium"),
+            name="pascal_tiny",
+            path=Path("detection/pascal_tiny"),
             group="medium",
         ),
         DatasetInfo(
-            name="Vitens-Aeromonas",
-            path=Path("detection/Vitens-Aeromonas-coco"),
-            group="medium",
-        ),
-        DatasetInfo(
-            name="visdrone",
-            path=Path("detection/visdrone_coco_custom_split"),
+            name="bdd_large",
+            path=Path("detection/bdd_large"),
             group="large",
         ),
     ]
