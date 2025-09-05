@@ -181,10 +181,8 @@ def build_tags(config: Namespace, version_tags: dict[str, str]) -> dict[str, str
     if config.device == "gpu":
         tags["accelerator_info"] = subprocess.check_output(["nvidia-smi", "-L"]).decode().strip()  # noqa: S603, S607
     elif config.device == "xpu":
-        raw = subprocess.check_output(["xpu-smi", "discovery", "--dump", "1,2"]).decode().strip()  # noqa: S603, S607
-        tags["accelerator_info"] = "\n".join(
-            [ret.replace('"', "").replace(",", " : ") for ret in raw.split("\n")[1:]],
-        )
+        # raw = subprocess.check_output(["xpu-smi", "discovery", "--dump", "1,2"]).decode().strip()  # noqa: S603, S607
+        tags["accelerator_info"] = "XPU"
     elif config.device == "cpu":
         tags["accelerator_info"] = "cpu"
     logger.info(f"tags = {tags}")
