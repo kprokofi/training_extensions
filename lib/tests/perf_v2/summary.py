@@ -175,7 +175,7 @@ def summarize_table(history: pd.DataFrame, task: OTXTaskType) -> list[pd.DataFra
         "training:e2e_time",
         "training:epoch",
         "training:train/iter_time",
-        "training:gpu_mem",
+        # "training:gpu_mem",
         f"torch:test/{score_metric}",
         f"export:test/{score_metric}",
         f"optimize:test/{score_metric}",
